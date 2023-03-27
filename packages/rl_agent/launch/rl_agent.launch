@@ -1,0 +1,4 @@
+<!-- Launches the rl-agent-->
+<launch>
+    <node pkg="rl_agent" type="rl_agent" name="rl_agent" output="screen"/>
+</launch>

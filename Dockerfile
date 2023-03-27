@@ -1,7 +1,7 @@
 # parameters
-ARG REPO_NAME="<REPO_NAME_HERE>"
-ARG DESCRIPTION="<DESCRIPTION_HERE>"
-ARG MAINTAINER="<YOUR_FULL_NAME> (<YOUR_EMAIL_ADDRESS>)"
+ARG REPO_NAME="Safe-RL-Duckietown"
+ARG DESCRIPTION="Safe reinforcement learning in duckietown"
+ARG MAINTAINER="Jan Steinmüller janst1000@gmail.com"
 # pick an icon from: https://fontawesome.com/v4.7.0/icons/
 ARG ICON="cube"
 
@@ -51,6 +51,8 @@ ENV DT_LAUNCHER "${LAUNCHER}"
 COPY ./dependencies-apt.txt "${REPO_PATH}/"
 RUN dt-apt-install ${REPO_PATH}/dependencies-apt.txt
 
+
+
 # install python3 dependencies
 ARG PIP_INDEX_URL="https://pypi.org/simple"
 ENV PIP_INDEX_URL=${PIP_INDEX_URL}
@@ -58,8 +60,14 @@ RUN echo PIP_INDEX_URL=${PIP_INDEX_URL}
 COPY ./dependencies-py3.* "${REPO_PATH}/"
 RUN python3 -m pip install  -r ${REPO_PATH}/dependencies-py3.txt
 
+COPY ./packages/duckietown-utils "${REPO_PATH}/packages/duckietown-utils"
+# adding duckietown utils to the python path
+RUN pip3 install -e ${REPO_PATH}/packages/duckietown-utils
+
 # copy the source code
 COPY ./packages "${REPO_PATH}/packages"
+
+
 
 # build packages
 RUN . /opt/ros/${ROS_DISTRO}/setup.sh && \

@@ -4,6 +4,7 @@
 # Allow files and directories
 !assets
 !packages
+!packages/duckietown-utils
 !dependencies-apt.txt
 !dependencies-py3.*
 !launchers

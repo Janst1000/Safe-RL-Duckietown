@@ -1,0 +1,6 @@
+[submodule "packages/dt-core"]
+	path = packages/dt-core
+	url = https://github.com/duckietown/dt-core.git
+[submodule "packages/duckietown-utils"]
+	path = packages/duckietown-utils
+	url = https://github.com/duckietown/duckietown-utils.git
