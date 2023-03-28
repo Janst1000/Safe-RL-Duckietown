@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 import numpy as np
-import rospy
 from sklearn.linear_model import LinearRegression
 from pprint import pprint
 import time
@@ -8,23 +7,43 @@ import signal
 
 import rospy
 from duckietown.dtros import DTROS, NodeType, TopicType
-from duckietown_msgs.msg import LanePose, WheelsCmdStamped
+from duckietown_msgs.msg import LanePose, WheelsCmdStamped, Pose2DStamped
+
+def generate_action(max_velocity):
+    action = np.random.uniform(0.1, max_velocity, size=2)
+    action = np.round(action, 2)
+    return action
+
+def generate_action_space(max_velocity, num_actions):
+    actions = []
+    for i in range(num_actions):
+        action = generate_action(max_velocity)
+        actions.append(action)
+    return actions
+
+
 
 class RLAgentNode(DTROS):
     def __init__(self, node_name):
         super(RLAgentNode, self).__init__(node_name=node_name, node_type=NodeType.PERCEPTION)
         self.namespace = rospy.get_namespace()
-        self.rate = rospy.Rate(10)
+        self.rate = rospy.Rate(5)
         self.lane_pose_sub = rospy.Subscriber(str(self.namespace + "lane_filter_node/lane_pose"), LanePose, self.lane_pose_cb)
+        self.pose_sub = rospy.Subscriber(str(self.namespace + "pose_estimator_node/pose"), Pose2DStamped, self.pose_cb)
         self.rl_agent_pub = rospy.Publisher(str(self.namespace + "wheels_driver_node/wheels_cmd"), WheelsCmdStamped, queue_size=1)
         # register the interrupt signal handler
         signal.signal(signal.SIGINT, self.shutdown)
         self.lane_pose = [0, 0]
+        self.pose = [0, 0, 0]
         
     def lane_pose_cb(self, msg):
         actual_dist = np.round(msg.d * 20, 2) / 20
         actual_angle = np.round(msg.phi * 20, 2) / 20
         self.lane_pose = actual_dist, actual_angle
+
+    def pose_cb(self, msg):
+        pose_x, pose_y, pose_theta = msg.x, msg.y, msg.theta
+        self.pose = [pose_x, pose_y, pose_theta]
 
     def shutdown(self, signal, frame):
         wheels_cmd_msg = WheelsCmdStamped(vel_left=0, vel_right=0)
@@ -41,24 +60,28 @@ class RobotEnv:
         self.current_dist = 0
         self.current_angle = 0
         self.lr = LinearRegression()
-        self.lr.coef_ = np.random.rand(2, 2)
-        self.lr.intercept_ = np.array([0, 0])
-        self.max_velocity = 0.2
-        self.actions = np.array([
+        self.lr.coef_ = np.random.rand(7, 5)
+        # setting the coefficient of x_dist to 0
+        self.lr.coef_[0][2] = 0
+        self.lr.intercept_ = np.array([0, 0, 0])
+        self.max_velocity = 0.3
+        """self.actions = np.array([
             [self.max_velocity, -self.max_velocity],
             [0, self.max_velocity],
             [self.max_velocity, 0],
             [self.max_velocity, self.max_velocity],
             [0, 0]
-        ])
+        ])"""
+        self.actions = generate_action_space(self.max_velocity, 20)
     
     def step(self, action):
         velocities = np.array(action)
-        distances = self.lr.predict(velocities.reshape(1, -1))[0]
-        next_dist = distances[0]
-        next_angle = distances[1]
+        x, y, theta = self.RLAgentNode.pose
+        lane_d, lane_phi = self.RLAgentNode.lane_pose
+        input_array = np.array([lane_d, lane_phi, x, y, theta, velocities[0], velocities[1]])
+        preditcted_location = self.lr.predict([input_array])
         
-        next_dist, next_angle = self.lr.predict(velocities.reshape(1, -1))[0]
+        
         # publishing velocities to robot
         wheels_cmd_msg = WheelsCmdStamped()
         wheels_cmd_msg.vel_left = velocities[0]
@@ -67,16 +90,14 @@ class RobotEnv:
         self.RLAgentNode.rl_agent_pub.publish(wheels_cmd_msg)
 
         # get actual data from subscriber
-        current_pose = self.RLAgentNode.lane_pose
-        actual_dist = current_pose[0]
-        actual_angle = current_pose[1]
-        self.lr.fit([[self.current_dist, self.current_angle], velocities], [[actual_dist, actual_angle], velocities])
+        actual_x, actual_y, actual_theta = self.RLAgentNode.pose
+        actual_lane_d, actual_lane_phi = self.RLAgentNode.lane_pose
+        actual_location = np.array(lane_d, lane_phi, actual_x, actual_y, actual_theta)
+        self.lr.fit(input_array, actual_location)
 
-        reward = 1 - abs(actual_dist*10) - abs(actual_angle)
+        reward = 1 - abs(actual_lane_d) - abs(actual_lane_phi) + abs(actual_x)
         done = False
-        self.current_dist = next_dist
-        self.current_angle = next_angle
-        next_state = np.array([next_dist, next_angle])
+        next_state = np.array([preditcted_location[0], preditcted_location[1]])
         print("Action: {}, next state: {}, reward: {}".format(action, next_state, reward))
         return next_state, reward, done, {}
 
