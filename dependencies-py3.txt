@@ -29,7 +29,7 @@ ruamel.yaml.clib
 
 #./src/duckietown-utils
 
-numpy
+numpy==1.21
 scikit-learn
 
 pprintpp

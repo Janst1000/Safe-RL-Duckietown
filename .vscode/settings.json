@@ -1,3 +1,12 @@
 {
-    "cmake.configureOnOpen": false
+    "cmake.configureOnOpen": false,
+    "python.analysis.extraPaths": [
+        "./dt-ros-commons",
+        "./dt-ros-commons/packages/duckietown/include",
+        "./dt-ros-commons/packages/duckietown_msgs/msg",
+        "./dt-ros-commons/packages/duckietown_msgs",
+        "~/catkin_ws/devel/include/lib/python3/dist-packages",
+        "/opt/ros/noetic/lib/python3/dist-packages",
+        "~/anaconda/bin/python/dist-packages"
+    ]
 }
