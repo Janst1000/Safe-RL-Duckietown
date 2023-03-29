@@ -29,7 +29,7 @@ class RLAgentNode(DTROS):
         self.namespace = rospy.get_namespace()
         self.rate = rospy.Rate(5)
         self.lane_pose_sub = rospy.Subscriber(str(self.namespace + "lane_filter_node/lane_pose"), LanePose, self.lane_pose_cb)
-        self.pose_sub = rospy.Subscriber(str(self.namespace + "pose_estimator_node/pose"), Pose2DStamped, self.pose_cb)
+        self.pose_sub = rospy.Subscriber(str("/donald/velocity_to_pose_node/pose"), Pose2DStamped, self.pose_cb)
         self.rl_agent_pub = rospy.Publisher(str(self.namespace + "wheels_driver_node/wheels_cmd"), WheelsCmdStamped, queue_size=1)
         # register the interrupt signal handler
         signal.signal(signal.SIGINT, self.shutdown)
@@ -37,8 +37,8 @@ class RLAgentNode(DTROS):
         self.pose = [0, 0, 0]
         
     def lane_pose_cb(self, msg):
-        actual_dist = np.round(msg.d * 20, 2) / 20
-        actual_angle = np.round(msg.phi * 20, 2) / 20
+        actual_dist = np.round(msg.d, 2)
+        actual_angle = np.round(msg.phi, 2)
         self.lane_pose = actual_dist, actual_angle
 
     def pose_cb(self, msg):
@@ -60,10 +60,9 @@ class RobotEnv:
         self.current_dist = 0
         self.current_angle = 0
         self.lr = LinearRegression()
-        self.lr.coef_ = np.random.rand(7, 5)
+        self.lr.coef_ = np.random.rand(5, 7)
         # setting the coefficient of x_dist to 0
-        self.lr.coef_[0][2] = 0
-        self.lr.intercept_ = np.array([0, 0, 0])
+        self.lr.intercept_ = np.zeros(5)
         self.max_velocity = 0.3
         """self.actions = np.array([
             [self.max_velocity, -self.max_velocity],
@@ -72,46 +71,42 @@ class RobotEnv:
             [self.max_velocity, self.max_velocity],
             [0, 0]
         ])"""
-        self.actions = generate_action_space(self.max_velocity, 20)
+        self.actions = generate_action_space(self.max_velocity, 10)
     
     def step(self, action):
         velocities = np.array(action)
         x, y, theta = self.RLAgentNode.pose
         lane_d, lane_phi = self.RLAgentNode.lane_pose
+        print("Current state: {}, {}, {}, {}, {}".format(lane_d, lane_phi, x, y, theta))
+        print("Current coefs: \n{}".format(self.lr.coef_))
         input_array = np.array([lane_d, lane_phi, x, y, theta, velocities[0], velocities[1]])
-        preditcted_location = self.lr.predict([input_array])
+        input_array = input_array.reshape(1, -1)
+        
+        predicted_location = self.lr.predict(input_array)
+        predicted_location = predicted_location.reshape(5)
         
         
-        # publishing velocities to robot
-        wheels_cmd_msg = WheelsCmdStamped()
-        wheels_cmd_msg.vel_left = velocities[0]
-        wheels_cmd_msg.vel_right = velocities[1]
-        print("Publishing: {}".format(velocities))
-        self.RLAgentNode.rl_agent_pub.publish(wheels_cmd_msg)
-
-        # get actual data from subscriber
-        actual_x, actual_y, actual_theta = self.RLAgentNode.pose
-        actual_lane_d, actual_lane_phi = self.RLAgentNode.lane_pose
-        actual_location = np.array(lane_d, lane_phi, actual_x, actual_y, actual_theta)
-        self.lr.fit(input_array, actual_location)
-
-        reward = 1 - abs(actual_lane_d) - abs(actual_lane_phi) + abs(actual_x)
+        
+        predicted_lane_d = predicted_location[0]
+        predicted_lane_phi = predicted_location[1]
+        predicted_x = predicted_location[2]
+        predicted_y = predicted_location[3]
+        predicted_theta = predicted_location[4]
+        reward = 1 - abs(predicted_lane_d) - abs(predicted_lane_phi)
         done = False
-        next_state = np.array([preditcted_location[0], preditcted_location[1]])
+        next_state = predicted_location
         print("Action: {}, next state: {}, reward: {}".format(action, next_state, reward))
-        return next_state, reward, done, {}
+        return next_state, reward, done, input_array
 
     
     def reset(self):
-        self.current_dist = np.random.uniform(-0.5, 0.5)
-        self.current_angle = np.random.uniform(-0.1, 0.1)
-        state = np.array([self.current_dist, self.current_angle])
+        try:
+            state = self.RLAgentNode.lane_pose
+        except:
+            state = [0, 0]
         state = np.round(state, 2)
         return state
-    
-    """def lane_pose_cb(self):
-        self.actual_dist = self.RLAgentNode.actual_dist
-        self.actual_angle = self.RLAgentNode.actual_angle"""
+
 
 
 class ModelBasedRL:
@@ -122,7 +117,25 @@ class ModelBasedRL:
         self.epsilon = epsilon
         self.Q = {}
 
-        
+    def exec_action(self, action, action_dict):
+        velocities = self.env.actions[action]
+        # publishing velocities to robot
+        wheels_cmd_msg = WheelsCmdStamped()
+        wheels_cmd_msg.vel_left = velocities[0]
+        wheels_cmd_msg.vel_right = velocities[1]
+        print("Publishing: {}".format(velocities))
+        self.env.RLAgentNode.rl_agent_pub.publish(wheels_cmd_msg)
+        print("published to topic: {}".format(self.env.RLAgentNode.rl_agent_pub.name))
+
+        # get actual data from subscriber
+        actual_x, actual_y, actual_theta = self.env.RLAgentNode.pose
+        actual_lane_d, actual_lane_phi = self.env.RLAgentNode.lane_pose
+        actual_location = np.array([actual_lane_d, actual_lane_phi, actual_x, actual_y, actual_theta])
+        input_array = np.array(action_dict[action]).reshape(1, 7)
+        actual_location = actual_location.reshape(1, 5)
+        pprint(input_array)
+        pprint(actual_location)
+        self.env.lr.fit(input_array, actual_location)
         
     def get_action(self, state):
         # print("Current Q-table:")
@@ -172,9 +185,15 @@ class ModelBasedRL:
             while not done:
                 current_time = rospy.Time.now()
                 print("Current state: {}".format(state))
+                action_dict = {}
+                for action_idx in range(len(self.env.actions)):
+                    next_state, reward, done , input_array= self.env.step(self.env.actions[action_idx])
+                    self.update_Q(state, action_idx, next_state[:1], reward)
+                    action_dict[action_idx] = input_array
+
                 action_idx = self.get_action(state)
-                next_state, reward, done, _ = self.env.step(self.env.actions[action_idx])
-                self.update_Q(state, action_idx, next_state, reward)
+                self.exec_action(action_idx, action_dict)                
+                
                 total_reward += reward
                 state = self.env.RLAgentNode.lane_pose
                 elaped_ms = (rospy.Time.now() - current_time).to_nsec() / 1000000
@@ -190,7 +209,8 @@ if __name__ == '__main__':
     time.sleep(3)
     env = RobotEnv()
     agent = ModelBasedRL(env)
-    rospy.logwarn("RL agent node started")
+    rospy.logwarn("RL agent node started. Waiting for lane pose...")
     rospy.wait_for_message(str(env.RLAgentNode.namespace + "lane_filter_node/lane_pose"), LanePose)
+    rospy.logwarn("Lane pose received. Starting training...")
     agent.train(1000)
     rospy.spin()
