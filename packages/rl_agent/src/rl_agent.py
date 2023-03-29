@@ -7,17 +7,19 @@ import signal
 
 import rospy
 from duckietown.dtros import DTROS, NodeType, TopicType
-from duckietown_msgs.msg import LanePose, WheelsCmdStamped, Pose2DStamped
+from duckietown_msgs.msg import LanePose, WheelsCmdStamped, Pose2DStamped, Twist2DStamped
 
-def generate_action(max_velocity):
-    action = np.random.uniform(0.1, max_velocity, size=2)
+def generate_action(max_v, max_omega):
+    action_v = np.random.uniform(0.1, max_v)
+    action_omega = np.random.uniform(-max_omega, max_omega)
+    action = [action_v, action_omega]
     action = np.round(action, 2)
     return action
 
-def generate_action_space(max_velocity, num_actions):
+def generate_action_space(max_v, max_omega, num_actions):
     actions = []
     for i in range(num_actions):
-        action = generate_action(max_velocity)
+        action = generate_action(max_v, max_omega)
         actions.append(action)
     return actions
 
@@ -29,8 +31,8 @@ class RLAgentNode(DTROS):
         self.namespace = rospy.get_namespace()
         self.rate = rospy.Rate(5)
         self.lane_pose_sub = rospy.Subscriber(str(self.namespace + "lane_filter_node/lane_pose"), LanePose, self.lane_pose_cb)
-        self.pose_sub = rospy.Subscriber(str("/donald/velocity_to_pose_node/pose"), Pose2DStamped, self.pose_cb)
-        self.rl_agent_pub = rospy.Publisher(str(self.namespace + "wheels_driver_node/wheels_cmd"), WheelsCmdStamped, queue_size=1)
+        self.pose_sub = rospy.Subscriber(str(self.namespace + "velocity_to_pose_node/pose"), Pose2DStamped, self.pose_cb)
+        self.rl_agent_pub = rospy.Publisher(str(self.namespace + "joy_mapper_node/car_cmd"), Twist2DStamped, queue_size=1)
         # register the interrupt signal handler
         signal.signal(signal.SIGINT, self.shutdown)
         self.lane_pose = [0, 0]
@@ -46,8 +48,9 @@ class RLAgentNode(DTROS):
         self.pose = [pose_x, pose_y, pose_theta]
 
     def shutdown(self, signal, frame):
-        wheels_cmd_msg = WheelsCmdStamped(vel_left=0, vel_right=0)
-        self.rl_agent_pub.publish(wheels_cmd_msg)
+        # wheels_cmd_msg = WheelsCmdStamped(vel_left=0, vel_right=0)
+        twist_msg = Twist2DStamped(v=0, omega=0)
+        self.rl_agent_pub.publish(twist_msg)
         rospy.logerr("[RLAgentNode] Shutdown complete.")
         time.sleep(1)
         
@@ -60,10 +63,18 @@ class RobotEnv:
         self.current_dist = 0
         self.current_angle = 0
         self.lr = LinearRegression()
-        self.lr.coef_ = np.random.rand(5, 7)
+        """self.lr.coef_ = np.random.rand(5, 7)
         # setting the coefficient of x_dist to 0
-        self.lr.intercept_ = np.zeros(5)
-        self.max_velocity = 0.3
+        self.lr.intercept_ = np.zeros(5)"""
+
+        # loading model from file
+        root_path = "/code/catkin_ws/src/Safe-RL-Duckietown/packages/rl_agent/config/"
+        model_arrays = np.load(str(root_path + "model.npz"))
+        self.lr.coef_ = model_arrays["coef"]
+        self.lr.intercept_ = model_arrays["intercept"]
+
+        self.max_v = 0.3
+        self.max_omega = 1.0
         """self.actions = np.array([
             [self.max_velocity, -self.max_velocity],
             [0, self.max_velocity],
@@ -71,20 +82,19 @@ class RobotEnv:
             [self.max_velocity, self.max_velocity],
             [0, 0]
         ])"""
-        self.actions = generate_action_space(self.max_velocity, 10)
+        self.actions = generate_action_space(self.max_v, self.max_omega, 10)
     
     def step(self, action):
         velocities = np.array(action)
         x, y, theta = self.RLAgentNode.pose
         lane_d, lane_phi = self.RLAgentNode.lane_pose
         print("Current state: {}, {}, {}, {}, {}".format(lane_d, lane_phi, x, y, theta))
-        print("Current coefs: \n{}".format(self.lr.coef_))
+        #print("Current coefs: \n{}".format(self.lr.coef_))
         input_array = np.array([lane_d, lane_phi, x, y, theta, velocities[0], velocities[1]])
         input_array = input_array.reshape(1, -1)
         
         predicted_location = self.lr.predict(input_array)
         predicted_location = predicted_location.reshape(5)
-        
         
         
         predicted_lane_d = predicted_location[0]
@@ -106,7 +116,15 @@ class RobotEnv:
             state = [0, 0]
         state = np.round(state, 2)
         return state
+    
+    
+    """def lane_pose_cb(self):
+        self.actual_dist = self.RLAgentNode.actual_dist
+        self.actual_angle = self.RLAgentNode.actual_angle"""
 
+    """def lane_pose_cb(self):
+        self.actual_dist = self.RLAgentNode.actual_dist
+        self.actual_angle = self.RLAgentNode.actual_angle"""
 
 
 class ModelBasedRL:
@@ -120,12 +138,15 @@ class ModelBasedRL:
     def exec_action(self, action, action_dict):
         velocities = self.env.actions[action]
         # publishing velocities to robot
-        wheels_cmd_msg = WheelsCmdStamped()
+        """wheels_cmd_msg = WheelsCmdStamped()
         wheels_cmd_msg.vel_left = velocities[0]
-        wheels_cmd_msg.vel_right = velocities[1]
+        wheels_cmd_msg.vel_right = velocities[1]"""
+        twist_msg = Twist2DStamped()
+        twist_msg.v = velocities[0]
+        twist_msg.omega = velocities[1]
+        twist_msg.header.stamp = rospy.Time.now()
         print("Publishing: {}".format(velocities))
-        self.env.RLAgentNode.rl_agent_pub.publish(wheels_cmd_msg)
-        print("published to topic: {}".format(self.env.RLAgentNode.rl_agent_pub.name))
+        self.env.RLAgentNode.rl_agent_pub.publish(twist_msg)
 
         # get actual data from subscriber
         actual_x, actual_y, actual_theta = self.env.RLAgentNode.pose
@@ -133,9 +154,11 @@ class ModelBasedRL:
         actual_location = np.array([actual_lane_d, actual_lane_phi, actual_x, actual_y, actual_theta])
         input_array = np.array(action_dict[action]).reshape(1, 7)
         actual_location = actual_location.reshape(1, 5)
-        pprint(input_array)
-        pprint(actual_location)
-        self.env.lr.fit(input_array, actual_location)
+        #pprint(input_array)
+        #pprint(actual_location)
+        #self.env.lr.fit(input_array, actual_location)
+        reward = 1 - abs(actual_lane_d) - abs(actual_lane_phi)
+        return reward
         
     def get_action(self, state):
         # print("Current Q-table:")
@@ -192,7 +215,9 @@ class ModelBasedRL:
                     action_dict[action_idx] = input_array
 
                 action_idx = self.get_action(state)
-                self.exec_action(action_idx, action_dict)                
+                reward = self.exec_action(action_idx, action_dict)
+                # update reward for taken action in Q-table
+                self.update_Q(state, action_idx, next_state, reward)                
                 
                 total_reward += reward
                 state = self.env.RLAgentNode.lane_pose
