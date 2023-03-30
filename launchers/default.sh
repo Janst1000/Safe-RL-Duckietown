@@ -14,7 +14,11 @@ dt-launchfile-init
 
 # launching app
 #dt-exec roslaunch lane_filter lane_filter_node.launch veh:=$VEHICLE_NAME
-dt-exec rosrun rl_agent rl_agent.py
+# launch lane_filter_node in background
+#roslaunch lane_filter lane_filter_node.launch veh:=$VEHICLE_NAME &
+dt-exec roslaunch rl_agent rl_agent.launch veh:=$VEHICLE_NAME
+#roslaunch rl_agent collect_data.launch veh:=$VEHICLE_NAME
+#bash
 
 # ----------------------------------------------------------------------------
 # YOUR CODE ABOVE THIS LINE

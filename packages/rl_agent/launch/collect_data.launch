@@ -34,7 +34,7 @@ LP removing for now
   	</include>
 	<!-- launching the rl_agent -->
 	<group ns="$(arg veh)">
-		<node pkg="rl_agent" type="rl_agent.py" name="rl_agent_node" output="screen">
+		<node pkg="rl_agent" type="collect_data.py" name="data_collector_node" output="screen">
 			<param name="veh" value="$(arg veh)"/>
 		</node>
 	</group>
