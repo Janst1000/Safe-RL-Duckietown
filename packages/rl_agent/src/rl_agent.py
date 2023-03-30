@@ -18,9 +18,14 @@ def generate_action(max_v, max_omega):
 
 def generate_action_space(max_v, max_omega, num_actions):
     actions = []
+    num_actions -= 3
     for i in range(num_actions):
         action = generate_action(max_v, max_omega)
         actions.append(action)
+
+    actions.append([0.2, 0])
+    actions.append([0.0, 2])
+    actions.append([0.0, -2])
     return actions
 
 
@@ -73,8 +78,8 @@ class RobotEnv:
         self.lr.coef_ = model_arrays["coef"]
         self.lr.intercept_ = model_arrays["intercept"]
 
-        self.max_v = 0.3
-        self.max_omega = 1.0
+        self.max_v = 0.4
+        self.max_omega = 3.0
         """self.actions = np.array([
             [self.max_velocity, -self.max_velocity],
             [0, self.max_velocity],
@@ -82,26 +87,27 @@ class RobotEnv:
             [self.max_velocity, self.max_velocity],
             [0, 0]
         ])"""
-        self.actions = generate_action_space(self.max_v, self.max_omega, 10)
+        self.actions = generate_action_space(self.max_v, self.max_omega, 15)
     
     def step(self, action):
         velocities = np.array(action)
         x, y, theta = self.RLAgentNode.pose
         lane_d, lane_phi = self.RLAgentNode.lane_pose
-        print("Current state: {}, {}, {}, {}, {}".format(lane_d, lane_phi, x, y, theta))
+        #print("Current state: {}, {}, {}, {}, {}".format(lane_d, lane_phi, x, y, theta))
         #print("Current coefs: \n{}".format(self.lr.coef_))
-        input_array = np.array([lane_d, lane_phi, x, y, theta, velocities[0], velocities[1]])
+        #input_array = np.array([lane_d, lane_phi, x, y, theta, velocities[0], velocities[1]])
+        input_array = np.array([lane_d, lane_phi, velocities[0], velocities[1]])
         input_array = input_array.reshape(1, -1)
         
         predicted_location = self.lr.predict(input_array)
-        predicted_location = predicted_location.reshape(5)
+        predicted_location = predicted_location.reshape(2)
         
         
         predicted_lane_d = predicted_location[0]
         predicted_lane_phi = predicted_location[1]
-        predicted_x = predicted_location[2]
+        """predicted_x = predicted_location[2]
         predicted_y = predicted_location[3]
-        predicted_theta = predicted_location[4]
+        predicted_theta = predicted_location[4]"""
         reward = 1 - abs(predicted_lane_d) - abs(predicted_lane_phi)
         done = False
         next_state = predicted_location
@@ -152,8 +158,8 @@ class ModelBasedRL:
         actual_x, actual_y, actual_theta = self.env.RLAgentNode.pose
         actual_lane_d, actual_lane_phi = self.env.RLAgentNode.lane_pose
         actual_location = np.array([actual_lane_d, actual_lane_phi, actual_x, actual_y, actual_theta])
-        input_array = np.array(action_dict[action]).reshape(1, 7)
-        actual_location = actual_location.reshape(1, 5)
+        input_array = np.array(action_dict[action]).reshape(1, 4)
+        # actual_location = actual_location.reshape(1, 5)
         #pprint(input_array)
         #pprint(actual_location)
         #self.env.lr.fit(input_array, actual_location)

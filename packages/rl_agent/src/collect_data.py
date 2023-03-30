@@ -33,13 +33,12 @@ class DataCollectorNode(DTROS):
     def pose_cb(self, msg):
         pose_x, pose_y, pose_theta = msg.x, msg.y, msg.theta
         self.pose = [pose_x, pose_y, pose_theta]
-        print("Pose: ", self.pose)
 
     """def wheels_cmd_cb(self, msg):
         self.last_wheels_cmd = [msg.vel_left, msg.vel_right]"""
 
     def assemble_data(self):
-        data = [self.lane_pose[0], self.lane_pose[1], self.pose[0], self.pose[1], self.pose[2], self.vel_cmd[0], self.vel_cmd[1]]
+        data = [self.lane_pose[0], self.lane_pose[1], self.vel_cmd[0], self.vel_cmd[1]]
         return data
 
     def shutdown(self, signal, frame):
@@ -62,8 +61,8 @@ if __name__ == '__main__':
         # publish random velocities
         
         
-        new_v = np.random.uniform(0.15, 0.3)
-        new_omega = np.random.uniform(-1, 1)
+        new_v = np.random.uniform(0.15, 0.5)
+        new_omega = np.random.uniform(-4, 4)
         velocities = np.array([new_v, new_omega])
         velocities = np.round(velocities, 2)
         twist_msg = Twist2DStamped()
@@ -75,7 +74,7 @@ if __name__ == '__main__':
         print("Published: ", velocities)
         data_collector_node.rate.sleep()
         # collect data
-        current_state = data_collector_node.assemble_data()[:5]
+        current_state = data_collector_node.assemble_data()[:2]
         print("previous state: ", previous_state)
         print("current state: ", current_state)
         # save data to file
