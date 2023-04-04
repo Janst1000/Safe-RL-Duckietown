@@ -10,7 +10,7 @@ from duckietown.dtros import DTROS, NodeType, TopicType
 from duckietown_msgs.msg import LanePose, WheelsCmdStamped, Pose2DStamped, Twist2DStamped
 
 def generate_action(max_v, max_omega):
-    action_v = np.random.uniform(0.1, max_v)
+    action_v = np.random.uniform(0.2, max_v)
     action_omega = np.random.uniform(-max_omega, max_omega)
     action = [action_v, action_omega]
     action = np.round(action, 2)
@@ -23,9 +23,9 @@ def generate_action_space(max_v, max_omega, num_actions):
         action = generate_action(max_v, max_omega)
         actions.append(action)
 
-    actions.append([0.2, 0])
-    actions.append([0.0, 2])
-    actions.append([0.0, -2])
+    actions.append([0.3, 0])
+    actions.append([0.2, 4])
+    actions.append([0.2, -4])
     return actions
 
 
@@ -79,14 +79,9 @@ class RobotEnv:
         self.lr.intercept_ = model_arrays["intercept"]
 
         self.max_v = 0.4
-        self.max_omega = 3.0
-        """self.actions = np.array([
-            [self.max_velocity, -self.max_velocity],
-            [0, self.max_velocity],
-            [self.max_velocity, 0],
-            [self.max_velocity, self.max_velocity],
-            [0, 0]
-        ])"""
+        self.max_omega = 4.0
+        #self.actions = [[0.2, 0], [0.0, 2], [0.0, -2]]
+        
         self.actions = generate_action_space(self.max_v, self.max_omega, 15)
     
     def step(self, action):
@@ -108,7 +103,7 @@ class RobotEnv:
         """predicted_x = predicted_location[2]
         predicted_y = predicted_location[3]
         predicted_theta = predicted_location[4]"""
-        reward = 1 - abs(predicted_lane_d) - abs(predicted_lane_phi)
+        reward = 1 - abs(predicted_lane_d**2) - abs(predicted_lane_phi**2)
         done = False
         next_state = predicted_location
         print("Action: {}, next state: {}, reward: {}".format(action, next_state, reward))
