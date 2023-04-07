@@ -7,7 +7,13 @@ import signal
 
 import rospy
 from duckietown.dtros import DTROS, NodeType, TopicType
-from duckietown_msgs.msg import LanePose, WheelsCmdStamped, Pose2DStamped, Twist2DStamped
+from duckietown_msgs.msg import LanePose, WheelsCmdStamped, Pose2DStamped, Twist2DStamped # type: ignore
+from duckietown_msgs.srv import ChangePattern # type: ignore
+from std_msgs.msg import String
+import sys
+# append this directory to path
+sys.path.append("/code/catkin_ws/src/Safe-RL-Duckietown/packages/rl_agent/src")
+from SafetyLayer import SafetyLayer
 
 def generate_action(max_v, max_omega):
     action_v = np.random.uniform(0.2, max_v)
@@ -24,8 +30,8 @@ def generate_action_space(max_v, max_omega, num_actions):
         actions.append(action)
 
     actions.append([0.3, 0])
-    actions.append([0.2, 4])
-    actions.append([0.2, -4])
+    actions.append([0, 2.5])
+    actions.append([0, -2.5])
     return actions
 
 
@@ -38,15 +44,41 @@ class RLAgentNode(DTROS):
         self.lane_pose_sub = rospy.Subscriber(str(self.namespace + "lane_filter_node/lane_pose"), LanePose, self.lane_pose_cb)
         self.pose_sub = rospy.Subscriber(str(self.namespace + "velocity_to_pose_node/pose"), Pose2DStamped, self.pose_cb)
         self.rl_agent_pub = rospy.Publisher(str(self.namespace + "joy_mapper_node/car_cmd"), Twist2DStamped, queue_size=1)
+        #self.led_pub = rospy.Publisher(str(self.namespace + "led_emitter_node/led_pattern"), LEDPattern, queue_size=1)
         # register the interrupt signal handler
         signal.signal(signal.SIGINT, self.shutdown)
         self.lane_pose = [0, 0]
         self.pose = [0, 0, 0]
+        self.lane_d_buffer = [0, 0, 0, 0, 0]
+        self.lane_phi_buffer = [0, 0, 0, 0, 0]
+        self.adjusted_lane_pose_pub = rospy.Publisher(str(self.namespace + "rl_agent/adjusted_lane_pose"), LanePose, queue_size=1)
+
+        # Turning the LEDS to WHITE on startup
+        self.led_service = rospy.ServiceProxy(str(self.namespace) + 'led_emitter_node/set_pattern', ChangePattern)
+        # Define the pattern name
+        pattern_name = String()
+        pattern_name.data = "WHITE"
+
+        # Call the service with the request message
+        response = self.led_service(pattern_name)
+
         
     def lane_pose_cb(self, msg):
         actual_dist = np.round(msg.d, 2)
         actual_angle = np.round(msg.phi, 2)
+        self.lane_d_buffer.append(actual_dist)
+        self.lane_phi_buffer.append(actual_angle)
+        self.lane_d_buffer.pop(0)
+        self.lane_phi_buffer.pop(0)
+        actual_dist = np.mean(self.lane_d_buffer)
+        actual_angle = np.mean(self.lane_phi_buffer)
         self.lane_pose = actual_dist, actual_angle
+        adjusted_lane_pose = LanePose()
+        adjusted_lane_pose.header = msg.header
+        adjusted_lane_pose.d = actual_dist
+        adjusted_lane_pose.phi = actual_angle
+        adjusted_lane_pose.in_lane = msg.in_lane
+        self.adjusted_lane_pose_pub.publish(adjusted_lane_pose)
 
     def pose_cb(self, msg):
         pose_x, pose_y, pose_theta = msg.x, msg.y, msg.theta
@@ -56,6 +88,9 @@ class RLAgentNode(DTROS):
         # wheels_cmd_msg = WheelsCmdStamped(vel_left=0, vel_right=0)
         twist_msg = Twist2DStamped(v=0, omega=0)
         self.rl_agent_pub.publish(twist_msg)
+        pattern_name = String()
+        pattern_name.data = "LIGHT_OFF"
+        response = self.led_service(pattern_name)
         rospy.logerr("[RLAgentNode] Shutdown complete.")
         time.sleep(1)
         
@@ -78,11 +113,12 @@ class RobotEnv:
         self.lr.coef_ = model_arrays["coef"]
         self.lr.intercept_ = model_arrays["intercept"]
 
-        self.max_v = 0.4
-        self.max_omega = 4.0
-        #self.actions = [[0.2, 0], [0.0, 2], [0.0, -2]]
+        self.max_v = 0.3
+        self.max_omega = 2.5
+        self.actions = [[0.3, 0], [0.1, 2], [0.1, -2], [0, 2.5], [0, -2.5]]
         
-        self.actions = generate_action_space(self.max_v, self.max_omega, 15)
+        #self.actions = generate_action_space(self.max_v, self.max_omega, 15)
+        
     
     def step(self, action):
         velocities = np.array(action)
@@ -103,7 +139,7 @@ class RobotEnv:
         """predicted_x = predicted_location[2]
         predicted_y = predicted_location[3]
         predicted_theta = predicted_location[4]"""
-        reward = 1 - abs(predicted_lane_d**2) - abs(predicted_lane_phi**2)
+        reward = 1 - abs((predicted_lane_d**2) * 3) - abs((predicted_lane_phi**2)* 0)
         done = False
         next_state = predicted_location
         print("Action: {}, next state: {}, reward: {}".format(action, next_state, reward))
@@ -129,12 +165,13 @@ class RobotEnv:
 
 
 class ModelBasedRL:
-    def __init__(self, env, gamma=0.9, alpha=0.1, epsilon=0.1):
+    def __init__(self, env, gamma=0.9, alpha=0.1, epsilon=0.1, max_lane_lane_dist=0.05, max_lane_phi=0.8, max_tof=100):
         self.env = env
         self.gamma = gamma
         self.alpha = alpha
         self.epsilon = epsilon
         self.Q = {}
+        self.safety_layer = SafetyLayer(max_lane_lane_dist, max_lane_phi, max_tof)
 
     def exec_action(self, action, action_dict):
         velocities = self.env.actions[action]
@@ -158,10 +195,10 @@ class ModelBasedRL:
         #pprint(input_array)
         #pprint(actual_location)
         #self.env.lr.fit(input_array, actual_location)
-        reward = 1 - abs(actual_lane_d) - abs(actual_lane_phi)
+        reward = 1 - abs((actual_lane_d**2) * 3) - abs((actual_lane_phi**2) * 0)
         return reward
         
-    def get_action(self, state):
+    def get_action(self, state, pred_state_dict):
         # print("Current Q-table:")
         # pprint(self.Q)
         if np.random.uniform(0, 1) < self.epsilon or self.Q == {}:
@@ -177,12 +214,30 @@ class ModelBasedRL:
             if state_idx not in self.Q:
                 self.Q[state_idx] = np.zeros((len(self.env.actions),))
             q_values = self.Q[state_idx]
-            max_q = np.max(q_values)
-            max_indices = np.where(q_values == max_q)[0]
-            action_idx = np.random.choice(max_indices)
-            action = self.env.actions[action_idx]
-        
-        return action_idx
+            # sorting the action indices in descending order of Q-values
+            best_idx = np.argsort(q_values)[::-1]
+            for action_idx in best_idx:
+                action = self.env.actions[action_idx]
+                pred_state = pred_state_dict[action_idx]
+                if self.safety_layer.check_safety(action, pred_state) == True:
+                    rospy.logdebug("Action {} is safe".format(action))
+                    return action_idx
+                else :
+                    rospy.logerr("Action {} is not safe".format(action))
+                    q_values[action_idx] = 0
+                    self.safety_stop()
+            rospy.logfatal("All actions unsafe")
+            self.safety_stop()
+        return None
+        #return action_idx
+
+    def safety_stop(self):
+        # stopping the robot if all actions are not safe
+        twist_msg = Twist2DStamped()
+        twist_msg.v = 0
+        twist_msg.omega = 0
+        twist_msg.header.stamp = rospy.Time.now()
+        self.env.RLAgentNode.rl_agent_pub.publish(twist_msg)
 
     def discretize_state(self, state):
         # Discretize state to indices of a Q-table
@@ -210,23 +265,29 @@ class ModelBasedRL:
                 current_time = rospy.Time.now()
                 print("Current state: {}".format(state))
                 action_dict = {}
+                pred_state_dict = {}
+                next_state = None
                 for action_idx in range(len(self.env.actions)):
                     next_state, reward, done , input_array= self.env.step(self.env.actions[action_idx])
-                    self.update_Q(state, action_idx, next_state[:1], reward)
+                    self.update_Q(state, action_idx, next_state[:2], reward)
                     action_dict[action_idx] = input_array
+                    pred_state_dict[action_idx] = next_state[:2]
 
-                action_idx = self.get_action(state)
-                reward = self.exec_action(action_idx, action_dict)
-                # update reward for taken action in Q-table
-                self.update_Q(state, action_idx, next_state, reward)                
-                
+                action_idx = self.get_action(state, pred_state_dict)
+                try:
+                    reward = self.exec_action(action_idx, action_dict)
+                    # update reward for taken action in Q-table
+                    self.update_Q(state, action_idx, next_state, reward)                
+                except:
+                    reward = 0
+                    self.update_Q(state, action_idx, next_state, reward)
                 total_reward += reward
                 state = self.env.RLAgentNode.lane_pose
                 elaped_ms = (rospy.Time.now() - current_time).to_nsec() / 1000000
                 self.env.RLAgentNode.rate.sleep()
                 print("Time elapsed: {}ms and Total Reward: {}".format(elaped_ms, total_reward))
                 print("Q size: {}".format(len(self.Q)))
-                if total_reward >= 100 or total_reward < 0:
+                if total_reward >= 50 or total_reward < 0:
                     done = True
 
                 
@@ -235,6 +296,7 @@ if __name__ == '__main__':
     time.sleep(3)
     env = RobotEnv()
     agent = ModelBasedRL(env)
+
     rospy.logwarn("RL agent node started. Waiting for lane pose...")
     rospy.wait_for_message(str(env.RLAgentNode.namespace + "lane_filter_node/lane_pose"), LanePose)
     rospy.logwarn("Lane pose received. Starting training...")

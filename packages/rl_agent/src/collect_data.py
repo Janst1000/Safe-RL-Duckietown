@@ -7,7 +7,7 @@ import signal
 
 import rospy
 from duckietown.dtros import DTROS, NodeType, TopicType
-from duckietown_msgs.msg import LanePose, Twist2DStamped, Pose2DStamped
+from duckietown_msgs.msg import LanePose, Twist2DStamped, Pose2DStamped # type: ignore
 
 class DataCollectorNode(DTROS):
     def __init__(self, node_name):
