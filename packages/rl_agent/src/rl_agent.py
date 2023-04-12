@@ -34,6 +34,9 @@ def generate_action_space(max_v, max_omega, num_actions):
     actions.append([0, -2.5])
     return actions
 
+def reward_function(lane_d, lane_phi):
+    reward = 1 - abs((lane_d**2) * 3) - abs((lane_phi**2)* 1)
+    return reward
 
 
 class RLAgentNode(DTROS):
@@ -66,19 +69,25 @@ class RLAgentNode(DTROS):
     def lane_pose_cb(self, msg):
         actual_dist = np.round(msg.d, 2)
         actual_angle = np.round(msg.phi, 2)
-        self.lane_d_buffer.append(actual_dist)
-        self.lane_phi_buffer.append(actual_angle)
-        self.lane_d_buffer.pop(0)
-        self.lane_phi_buffer.pop(0)
-        actual_dist = np.mean(self.lane_d_buffer)
-        actual_angle = np.mean(self.lane_phi_buffer)
+        try:
+            self.lane_d_buffer.append(actual_dist)
+            self.lane_phi_buffer.append(actual_angle)
+            self.lane_d_buffer.pop(0)
+            self.lane_phi_buffer.pop(0)
+            actual_dist = np.mean(self.lane_d_buffer)
+            actual_angle = np.mean(self.lane_phi_buffer)
+        except:
+            pass
         self.lane_pose = actual_dist, actual_angle
         adjusted_lane_pose = LanePose()
         adjusted_lane_pose.header = msg.header
         adjusted_lane_pose.d = actual_dist
         adjusted_lane_pose.phi = actual_angle
         adjusted_lane_pose.in_lane = msg.in_lane
-        self.adjusted_lane_pose_pub.publish(adjusted_lane_pose)
+        try:
+            self.adjusted_lane_pose_pub.publish(adjusted_lane_pose)
+        except:
+            pass
 
     def pose_cb(self, msg):
         pose_x, pose_y, pose_theta = msg.x, msg.y, msg.theta
@@ -115,7 +124,7 @@ class RobotEnv:
 
         self.max_v = 0.3
         self.max_omega = 2.5
-        self.actions = [[0.3, 0], [0.1, 2], [0.1, -2], [0, 2.5], [0, -2.5]]
+        self.actions = [[0.3, 0], [0.2, 2] ,[0.2, -2.0]]
         
         #self.actions = generate_action_space(self.max_v, self.max_omega, 15)
         
@@ -139,7 +148,7 @@ class RobotEnv:
         """predicted_x = predicted_location[2]
         predicted_y = predicted_location[3]
         predicted_theta = predicted_location[4]"""
-        reward = 1 - abs((predicted_lane_d**2) * 3) - abs((predicted_lane_phi**2)* 0)
+        reward = reward_function(predicted_lane_d, predicted_lane_phi)
         done = False
         next_state = predicted_location
         print("Action: {}, next state: {}, reward: {}".format(action, next_state, reward))
@@ -165,7 +174,7 @@ class RobotEnv:
 
 
 class ModelBasedRL:
-    def __init__(self, env, gamma=0.9, alpha=0.1, epsilon=0.1, max_lane_lane_dist=0.05, max_lane_phi=0.8, max_tof=100):
+    def __init__(self, env, gamma=0.9, alpha=0.1, epsilon=0.3, max_lane_lane_dist=0.07, max_lane_phi=0.8, max_tof=100):
         self.env = env
         self.gamma = gamma
         self.alpha = alpha
@@ -195,7 +204,7 @@ class ModelBasedRL:
         #pprint(input_array)
         #pprint(actual_location)
         #self.env.lr.fit(input_array, actual_location)
-        reward = 1 - abs((actual_lane_d**2) * 3) - abs((actual_lane_phi**2) * 0)
+        reward = reward_function(actual_lane_d, actual_lane_phi)
         return reward
         
     def get_action(self, state, pred_state_dict):
@@ -223,9 +232,9 @@ class ModelBasedRL:
                     rospy.logdebug("Action {} is safe".format(action))
                     return action_idx
                 else :
-                    rospy.logerr("Action {} is not safe".format(action))
-                    q_values[action_idx] = 0
                     self.safety_stop()
+                    rospy.logerr("Action {} is not safe".format(action))
+                    self.update_Q(state, action_idx, pred_state, -100)
             rospy.logfatal("All actions unsafe")
             self.safety_stop()
         return None
@@ -289,6 +298,8 @@ class ModelBasedRL:
                 print("Q size: {}".format(len(self.Q)))
                 if total_reward >= 50 or total_reward < 0:
                     done = True
+            self.epsilon = self.epsilon * 0.75
+            
 
                 
 

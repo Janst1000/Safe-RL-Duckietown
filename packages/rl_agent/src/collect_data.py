@@ -23,11 +23,18 @@ class DataCollectorNode(DTROS):
         self.lane_pose = [0, 0]
         self.pose = [0, 0, 0]
         self.vel_cmd = [0, 0]
+        self.lane_d_buffer = [0, 0, 0, 0, 0]
+        self.lane_phi_buffer = [0, 0, 0, 0, 0]
         self.is_shutdown = False
 
     def lane_pose_cb(self, msg):
         actual_dist = np.round(msg.d, 2)
         actual_angle = np.round(msg.phi, 2)
+        self.lane_d_buffer.append(actual_dist)
+        self.lane_phi_buffer.append(actual_angle)
+        self.lane_d_buffer.pop(0)
+        self.lane_phi_buffer.pop(0)
+        actual_dist = np.mean(self.lane_d_buffer)
         self.lane_pose = actual_dist, actual_angle
 
     def pose_cb(self, msg):
@@ -61,8 +68,8 @@ if __name__ == '__main__':
         # publish random velocities
         
         
-        new_v = np.random.uniform(0.15, 0.5)
-        new_omega = np.random.uniform(-4, 4)
+        new_v = np.random.uniform(0.15, 0.4)
+        new_omega = np.random.uniform(-3, 3)
         velocities = np.array([new_v, new_omega])
         velocities = np.round(velocities, 2)
         twist_msg = Twist2DStamped()
