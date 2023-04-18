@@ -115,7 +115,7 @@ class RobotEnv:
 
         self.max_v = 0.3
         self.max_omega = 2.5
-        self.actions = [[0.5, 0], [0.2, 3] ,[0.2, -3]]
+        self.actions = [[0.4, 0], [0.2, 3] ,[0.2, -3]]
         
         #self.actions = generate_action_space(self.max_v, self.max_omega, 15
         
@@ -144,7 +144,7 @@ class RobotEnv:
         twist_msg.header.stamp = rospy.Time.now()
         self.DeepRLNode.rl_agent_pub.publish(twist_msg)
     
-    def predict_state(self, state, action):
+    def predict_state_cs(self, state, action):
         state = state.reshape(2,)
         d = state[0]
         phi = state[1]
@@ -167,7 +167,7 @@ class RobotEnv:
 if __name__ == '__main__':
     time.sleep(3)
     env = RobotEnv()
-    agent = DQLAgent(state_size=2, action_size=3)
+    agent = DQLAgent(state_size=2, action_size=3, actions = env.actions, sleep_time=SLEEP_TIME)
 
     rospy.logwarn("RL agent node started. Waiting for lane pose...")
     rospy.wait_for_message(str(env.DeepRLNode.namespace + "lane_filter_node/lane_pose"), LanePose)
@@ -187,6 +187,11 @@ if __name__ == '__main__':
             current_state = env.get_state()
             #print("Current state: {}".format(current_state))
             action = agent.act(current_state)
+            if action is None:
+                rospy.logerr("No safe action found.")
+                env.safety_stop()
+                time.sleep(SLEEP_TIME)
+                continue
             reward = env.exec_action(action)
             total_reward += reward
             print("State: {}, Action: {}, Reward: {}, Total Reward: {}".format(current_state, env.actions[action], reward, total_reward))
@@ -195,14 +200,11 @@ if __name__ == '__main__':
             time.sleep(SLEEP_TIME)
             agent.remember(current_state, action, reward, env.get_state(), done)
             env.safety_stop()
-            predict_state = env.predict_state(current_state, action).reshape(2,)
-            error = (predict_state[0] - env.get_state()[0, 0])**2 + (predict_state[1] - env.get_state()[0, 1])**2
-            print("Predicted state: {}, Actual state {}, Error {}".format(predict_state, env.get_state(), error))
             steps += 1
             if steps >= batch_size:
                 agent.replay(batch_size)
                 steps = 0
-        batch_size += 1
+        batch_size += 2
             
         
     rospy.spin()

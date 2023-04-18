@@ -19,6 +19,7 @@ install(DIRECTORY launch/
 catkin_install_python(PROGRAMS
   src/rl_agent.py
   src/collect_data.py
+  src/deep_rl_node.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 
