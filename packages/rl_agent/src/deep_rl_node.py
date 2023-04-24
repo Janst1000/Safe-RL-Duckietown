@@ -17,7 +17,7 @@ sys.path.append("/code/catkin_ws/src/Safe-RL-Duckietown/packages/rl_agent/src")
 from deep_rl_agent import DQLAgent
 from SafetyLayer import SafetyLayer
 
-RATE = 2.5
+RATE = 3
 SLEEP_TIME = 1.0 / RATE
 
 # Some helper functions
@@ -69,7 +69,11 @@ class DeepRLNode(DTROS):
         pattern_name.data = "WHITE"
 
         # Call the service with the request message
-        response = self.led_service(pattern_name)
+        try:
+            response = self.led_service(pattern_name)
+        except rospy.ServiceException as e:
+            rospy.logwarn("Service call failed: %s" % e)
+            rospy.logwarn("Continuing without LED control")
 
         
     def lane_pose_cb(self, msg):
@@ -115,7 +119,7 @@ class RobotEnv:
 
         self.max_v = 0.3
         self.max_omega = 2.5
-        self.actions = [[0.4, 0], [0.2, 3] ,[0.2, -3]]
+        self.actions = [[0.4, 0], [0.2, 4] ,[0.2, -4], [0, 4], [0, -4]]
         
         #self.actions = generate_action_space(self.max_v, self.max_omega, 15
         
@@ -124,7 +128,10 @@ class RobotEnv:
         return state
     
     def exec_action(self, action):
-        velocities = self.actions[action]
+        if type(action) == list:
+            velocities = action
+        else:
+            velocities = self.actions[action]
         twist_msg = Twist2DStamped()
         twist_msg.v = velocities[0]
         twist_msg.omega = velocities[1]
@@ -134,7 +141,7 @@ class RobotEnv:
         # get actual data from subscriber
         actual_lane_d, actual_lane_phi = self.DeepRLNode.lane_pose
         reward = reward_function(actual_lane_d, actual_lane_phi)
-        return reward
+        return velocities, reward
     
     def safety_stop(self):
         # stopping the robot if all actions are not safe
@@ -167,7 +174,7 @@ class RobotEnv:
 if __name__ == '__main__':
     time.sleep(3)
     env = RobotEnv()
-    agent = DQLAgent(state_size=2, action_size=3, actions = env.actions, sleep_time=SLEEP_TIME)
+    agent = DQLAgent(state_size=2, action_size=len(env.actions), actions = env.actions, sleep_time=SLEEP_TIME)
 
     rospy.logwarn("RL agent node started. Waiting for lane pose...")
     rospy.wait_for_message(str(env.DeepRLNode.namespace + "lane_filter_node/lane_pose"), LanePose)
@@ -192,15 +199,16 @@ if __name__ == '__main__':
                 env.safety_stop()
                 time.sleep(SLEEP_TIME)
                 continue
-            reward = env.exec_action(action)
+            velocities, reward = env.exec_action(action)
             total_reward += reward
-            print("State: {}, Action: {}, Reward: {}, Total Reward: {}".format(current_state, env.actions[action], reward, total_reward))
+            print("State: {}, Action: [{}, {}], Reward: {}, Total Reward: {}".format(current_state, velocities[0], velocities[1], reward, total_reward))
             if total_reward >= 50:
                 done=True
             time.sleep(SLEEP_TIME)
-            agent.remember(current_state, action, reward, env.get_state(), done)
+            if velocities in env.actions:
+                agent.remember(current_state, action, reward, env.get_state(), done)
+                steps += 1
             env.safety_stop()
-            steps += 1
             if steps >= batch_size:
                 agent.replay(batch_size)
                 steps = 0

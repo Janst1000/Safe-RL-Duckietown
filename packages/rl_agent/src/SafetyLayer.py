@@ -14,6 +14,6 @@ class SafetyLayer():
         if predicted_state[0] > self.max_lane_d or predicted_state[0] < -self.max_lane_d:
             return False
         elif predicted_state[1] > self.max_lane_phi or predicted_state[1] < -self.max_lane_phi:
-            return True
+            return False
         else:
             return True
