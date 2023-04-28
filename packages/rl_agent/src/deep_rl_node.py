@@ -17,7 +17,7 @@ sys.path.append("/code/catkin_ws/src/Safe-RL-Duckietown/packages/rl_agent/src")
 from deep_rl_agent import DQLAgent
 from SafetyLayer import SafetyLayer
 
-RATE = 3
+RATE = 5
 SLEEP_TIME = 1.0 / RATE
 
 # Some helper functions
@@ -26,14 +26,15 @@ def generate_action(max_v, max_omega):
     action_omega = np.random.uniform(-max_omega, max_omega)
     action = [action_v, action_omega]
     action = np.round(action, 2)
-    return action
+    return action.tolist()
 
 def generate_action_space(max_v, max_omega, num_actions):
     actions = []
-    num_actions -= 3
-    for i in range(num_actions):
-        action = generate_action(max_v, max_omega)
-        actions.append(action)
+    if num_actions > 3:
+        num_actions -= 3
+        for i in range(num_actions):
+            action = generate_action(max_v, max_omega)
+            actions.append(action)
 
     actions.append([0.3, 0])
     actions.append([0, 2.5])
@@ -119,17 +120,22 @@ class RobotEnv:
 
         self.max_v = 0.3
         self.max_omega = 2.5
-        self.actions = [[0.4, 0], [0.2, 4] ,[0.2, -4], [0, 4], [0, -4]]
+        #self.actions = [[0.4, 0], [0.2, 4] ,[0.2, -4], [0, 3], [0, -3]]
         
-        #self.actions = generate_action_space(self.max_v, self.max_omega, 15
+        self.actions = generate_action_space(self.max_v, self.max_omega, 100)
         
     def get_state(self):
-        state = np.array(self.DeepRLNode.lane_pose).reshape(1, 2)
+        state = self.DeepRLNode.lane_pose
+        state = np.append(state, SLEEP_TIME)
+        state = np.array(state).reshape(1, 3)
         return state
     
     def exec_action(self, action):
         if type(action) == list:
             velocities = action
+        elif type(action) == np.array:
+            action.reshape(2,)
+            velocities = action.tolist()
         else:
             velocities = self.actions[action]
         twist_msg = Twist2DStamped()
@@ -180,7 +186,7 @@ if __name__ == '__main__':
     rospy.wait_for_message(str(env.DeepRLNode.namespace + "lane_filter_node/lane_pose"), LanePose)
     rospy.logwarn("Lane pose received. Starting training...")
     num_episode = 1000
-    batch_size = 10
+    batch_size = int(RATE * 10) # execute for 5 seconds before we train the model
     total_reward = 0
 
 
@@ -188,7 +194,7 @@ if __name__ == '__main__':
         total_reward = 0
         done = False
         steps = 0
-        rospy.loginfo("Episode: {}".format(episode))
+        rospy.logdebug("Episode: {}".format(episode))
         while not done:
             #print("Episode: {}".format(episode))
             current_state = env.get_state()
@@ -206,6 +212,9 @@ if __name__ == '__main__':
                 done=True
             time.sleep(SLEEP_TIME)
             if velocities in env.actions:
+                # converting action to index in case it is in the action list
+                if type(action) == list:
+                    action = env.actions.index(action)
                 agent.remember(current_state, action, reward, env.get_state(), done)
                 steps += 1
             env.safety_stop()

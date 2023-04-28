@@ -96,3 +96,11 @@ if __name__ == '__main__':
             f.write(str(previous_state) + "/" + str(current_state) + "\n")
         print("Data saved.") 
         previous_state = data_collector_node.assemble_data()
+        new_rate = np.random.uniform(0.5, 2.5)
+        data_collector_node.rate = rospy.Rate(new_rate)
+        # stopping for next action
+        twist_msg = Twist2DStamped()
+        twist_msg.v = 0
+        twist_msg.omega = 0
+        twist_msg.header.stamp = rospy.get_rostime()
+        data_collector_node.rl_agent_pub.publish(twist_msg)
