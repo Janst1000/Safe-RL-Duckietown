@@ -221,6 +221,9 @@ if __name__ == '__main__':
             if steps >= batch_size:
                 agent.replay(batch_size)
                 steps = 0
+            if done == True:
+                agent.replay(steps)
+                steps = 0
         batch_size += 2
             
         

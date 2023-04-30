@@ -66,7 +66,7 @@ class DQLAgent:
                         print("Random action")
                         return action
                     if action_list == [] or action_list is None:
-                        return self.go_backwards(state)
+                        return self.get_back_to_safety(state)
             else:
                 print("Random action")
                 return random.randrange(self.action_size)
@@ -94,7 +94,7 @@ class DQLAgent:
             # if no safe action was found we slowly drive backwards
             original_action = np.argmax(q_values[0])
             predicted_state = self.predict_state_lr(state, self.actions[original_action]).reshape(2,)
-            return self.go_backwards(state)
+            return self.get_back_to_safety(state)
         else:
             print("Learned Action")
             return np.argmax(q_values[0])
@@ -156,31 +156,13 @@ class DQLAgent:
             self.iter += 1
             return self.optimize(state, new_action)
     
-    def get_back_to_safety(self, state, original_pred_state=None, original_action=None):
-        if type(original_pred_state) == list and type(original_action) == list: 
-            #original_pred_state = original_pred_state.reshape(2,)
-            original_reward = reward_function(original_pred_state[0], original_pred_state[1])
-            new_action = self.go_backwards(state)
-            predicted_state = self.predict_state_lr(state, new_action)
-            new_reward = reward_function(predicted_state[0], predicted_state[1])
-            if new_reward > original_reward:
-                print("New action {} is better than original action".format(new_action))
-                return new_action
-            else:
-                print("New action {} is worse than original action".format(new_action))
-                return original_action
-        else:
-            new_action = self.go_backwards(state)
-        
-        return new_action
-    
-    def go_backwards(self, state):
+    def get_back_to_safety(self, state):
         state = state.reshape(3,)
         dt = self.sleep_time
         # getting back to a safe state
         # turning towards center of lane
         if (state[1] > 0 and state[0] > 0) or (state[1] < 0 and state[0] < 0):
-            theta = self.get_theta(state[1], dt)
+            theta = -1.5 * state[1] / dt
             v = 0
         else:
             theta = state[1] / dt
@@ -190,8 +172,3 @@ class DQLAgent:
         new_action = [v, theta]
         print("Using inverse model to get back to safety")
         return new_action
-
-    def get_theta(self, phi, dt):
-        # getting theta from phi and dt
-        theta = -2 * phi / dt
-        return theta
