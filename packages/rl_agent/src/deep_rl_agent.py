@@ -128,6 +128,7 @@ class DQLAgent:
             self.epsilon *= self.epsilon_decay
             print("Epsilon: ", self.epsilon)
         print("Safety rate: {} (only considering current minibatch)".format(self.safety_rate))
+        return self.safety_rate
 
     def predict_state_lr(self, state, action):
         state = state.reshape(3,)

@@ -10,6 +10,7 @@ from duckietown.dtros import DTROS, NodeType, TopicType
 from duckietown_msgs.msg import LanePose, WheelsCmdStamped, Pose2DStamped, Twist2DStamped # type: ignore
 from duckietown_msgs.srv import ChangePattern # type: ignore
 from std_msgs.msg import String
+from rl_agent.msg import SafetyMsg
 import sys
 
 # append this directory to path
@@ -54,6 +55,7 @@ class DeepRLNode(DTROS):
         self.lane_pose_sub = rospy.Subscriber(str(self.namespace + "lane_filter_node/lane_pose"), LanePose, self.lane_pose_cb)
         self.pose_sub = rospy.Subscriber(str(self.namespace + "velocity_to_pose_node/pose"), Pose2DStamped, self.pose_cb)
         self.rl_agent_pub = rospy.Publisher(str(self.namespace + "joy_mapper_node/car_cmd"), Twist2DStamped, queue_size=1)
+        self.safety_rate_pub = rospy.Publisher(str(self.namespace + "rl_agent_node/safety_rate"), SafetyMsg, queue_size=1)
         self.safety_enabled = rospy.get_param(str(self.namespace + "rl_agent_node/safety_enabled"))
         # register the interrupt signal handler
         signal.signal(signal.SIGINT, self.shutdown)
@@ -61,7 +63,7 @@ class DeepRLNode(DTROS):
         self.pose = [0, 0, 0]
         self.lane_d_buffer = [0, 0, 0, 0, 0]
         self.lane_phi_buffer = [0, 0, 0, 0, 0]
-        self.adjusted_lane_pose_pub = rospy.Publisher(str(self.namespace + "rl_agent/adjusted_lane_pose"), LanePose, queue_size=1)
+        self.adjusted_lane_pose_pub = rospy.Publisher(str(self.namespace + "rl_agent_node/adjusted_lane_pose"), LanePose, queue_size=1)
 
         # Turning the LEDS to WHITE on startup
         self.led_service = rospy.ServiceProxy(str(self.namespace) + 'led_emitter_node/set_pattern', ChangePattern)
@@ -222,10 +224,20 @@ if __name__ == '__main__':
                 steps += 1
             env.safety_stop()
             if steps >= batch_size:
-                agent.replay(batch_size)
+                safety_rate = agent.replay(batch_size)
+                safety_msg = SafetyMsg()
+                safety_msg.safety_rate = safety_rate
+                safety_msg.epsilon = agent.epsilon
+                safety_msg.header.stamp = rospy.Time.now()
+                env.DeepRLNode.safety_rate_pub.publish(safety_msg)
                 steps = 0
             if done == True:
-                agent.replay(steps)
+                safety_rate = agent.replay(steps)
+                safety_msg = SafetyMsg()
+                safety_msg.safety_rate = safety_rate
+                safety_msg.epsilon = agent.epsilon
+                safety_msg.header.stamp = rospy.Time.now()
+                env.DeepRLNode.safety_rate_pub.publish(safety_msg)
                 steps = 0
         batch_size += 2
             

@@ -6,18 +6,34 @@ find_package(catkin REQUIRED COMPONENTS
   duckietown_msgs # Every duckietown packages should use this.
   cv_bridge
   tf
+  std_msgs
+  message_generation
 )
-
-catkin_package()
 
 # include launch files
 install(DIRECTORY launch/
   DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/launch
 )
 
+# add message files
+add_message_files(
+  FILES
+  SafetyMsg.msg
+)
+
+generate_messages(
+  DEPENDENCIES
+  std_msgs
+)
+
+catkin_package(
+  CATKIN_DEPENDS
+  message_runtime
+  std_msgs
+)
+
 # add python scripts
 catkin_install_python(PROGRAMS
-  src/rl_agent.py
   src/collect_data.py
   src/deep_rl_node.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
