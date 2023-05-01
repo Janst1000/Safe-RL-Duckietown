@@ -17,7 +17,7 @@ dt-launchfile-init
 # launch lane_filter_node in background
 #roslaunch lane_filter lane_filter_node.launch veh:=$VEHICLE_NAME &
 #dt-exec roslaunch rl_agent rl_agent.launch veh:=$VEHICLE_NAME
-dt-exec roslaunch rl_agent deep_rl_agent.launch veh:=$VEHICLE_NAME
+dt-exec roslaunch rl_agent deep_rl_no_safety.launch veh:=$VEHICLE_NAME
 #bash
 
 # ----------------------------------------------------------------------------

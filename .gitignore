@@ -9,3 +9,4 @@ html/*
 *.resolved
 
 /dt-ros-commons
+build_on_robot.sh

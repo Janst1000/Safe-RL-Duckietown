@@ -79,6 +79,13 @@ COPY ./launchers/. "${LAUNCH_PATH}/"
 COPY ./launchers/default.sh "${LAUNCH_PATH}/"
 RUN dt-install-launchers "${LAUNCH_PATH}"
 
+#RUN ls /code/catkin_ws/src/Safe-RL-Duckietown/packages
+
+# add packages to python path
+ENV PYTHONPATH "${PYTHONPATH}:${REPO_NAME}/packages/rl_agent/src"
+#RUN pip3 install -e /code/catkin_ws/src/Safe-RL-Duckietown/packages/rl_agent
+
+
 # define default command
 CMD ["bash", "-c", "dt-launcher-${DT_LAUNCHER}"]
 

@@ -30,12 +30,20 @@ LP removing for now
 	    <arg name="/lane_following/ground_projection" value="true"/>
 	    <arg name="/lane_following/lane_filter" value="true"/>
 	    
-
   	</include>
+	<!-- launch led emitter node with launch file -->
+	<include file="$(find led_emitter)/launch/led_emitter_node.launch">
+		<arg name="veh" value="$(arg veh)"/>
+
+	</include>
+	
 	<!-- launching the rl_agent -->
 	<group ns="$(arg veh)">
-		<node pkg="rl_agent" type="rl_agent.py" name="rl_agent_node" output="screen">
+		<node pkg="rl_agent" type="deep_rl_node.py" name="rl_agent_node" output="screen">
 			<param name="veh" value="$(arg veh)"/>
+			<param name="safety_enabled" value="false"/>
 		</node>
 	</group>
+	
+	
 </launch>
