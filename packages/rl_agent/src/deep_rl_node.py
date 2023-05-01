@@ -54,7 +54,7 @@ class DeepRLNode(DTROS):
         self.lane_pose_sub = rospy.Subscriber(str(self.namespace + "lane_filter_node/lane_pose"), LanePose, self.lane_pose_cb)
         self.pose_sub = rospy.Subscriber(str(self.namespace + "velocity_to_pose_node/pose"), Pose2DStamped, self.pose_cb)
         self.rl_agent_pub = rospy.Publisher(str(self.namespace + "joy_mapper_node/car_cmd"), Twist2DStamped, queue_size=1)
-        #self.led_pub = rospy.Publisher(str(self.namespace + "led_emitter_node/led_pattern"), LEDPattern, queue_size=1)
+        self.safety_enabled = rospy.get_param(str(self.namespace + "rl_agent_node/safety_enabled"))
         # register the interrupt signal handler
         signal.signal(signal.SIGINT, self.shutdown)
         self.lane_pose = [0, 0]
@@ -180,8 +180,11 @@ class RobotEnv:
 if __name__ == '__main__':
     time.sleep(3)
     env = RobotEnv()
-    agent = DQLAgent(state_size=2, action_size=len(env.actions), actions = env.actions, sleep_time=SLEEP_TIME)
-
+    agent = DQLAgent(state_size=2, action_size=len(env.actions), actions = env.actions, sleep_time=SLEEP_TIME, safety_enabled=env.DeepRLNode.safety_enabled)
+    if env.DeepRLNode.safety_enabled:
+        rospy.logwarn("Safety Layer is enabled.")
+    else:
+        rospy.logwarn("Safety Layer is disabled.")
     rospy.logwarn("RL agent node started. Waiting for lane pose...")
     rospy.wait_for_message(str(env.DeepRLNode.namespace + "lane_filter_node/lane_pose"), LanePose)
     rospy.logwarn("Lane pose received. Starting training...")

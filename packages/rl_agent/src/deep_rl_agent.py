@@ -114,15 +114,15 @@ class DQLAgent:
                 print("Q_values: ", q_values)
                 print("Action: ", action)
                 exit(1)
-            # decreasing reward if action resulted in unsafe state
-            if self.safety_enabled:
-                next_state = np.delete(next_state, 2)
-                safe = self.safety_layer.check_safety(next_state)
-                if not safe:
+            next_state = np.delete(next_state, 2)
+            safe = self.safety_layer.check_safety(next_state)
+            if not safe:
+                # penalizing action that resulted in an unsafe state
+                if self.safety_enabled:
                     q_values[0][action] = -1
-                    self.unsafe_actions += 1
-                    # updating safety rate
-                    self.safety_rate = 1 - (self.unsafe_actions / len(minibatch))
+                self.unsafe_actions += 1
+                # updating safety rate
+                self.safety_rate = 1 - (self.unsafe_actions / len(minibatch))
             self.model.fit(state, q_values, verbose=1)
         if self.epsilon > self.epsilon_min:
             self.epsilon *= self.epsilon_decay

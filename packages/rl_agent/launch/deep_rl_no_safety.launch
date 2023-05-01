@@ -41,7 +41,7 @@ LP removing for now
 	<group ns="$(arg veh)">
 		<node pkg="rl_agent" type="deep_rl_node.py" name="rl_agent_node" output="screen">
 			<param name="veh" value="$(arg veh)"/>
-			<param name="safety_enabled" value="true"/>
+			<param name="safety_enabled" value="false"/>
 		</node>
 	</group>
 	
