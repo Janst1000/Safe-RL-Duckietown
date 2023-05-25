@@ -102,17 +102,16 @@ To find some more detailed results you can look at the thesis document [here](./
 
 Here is the baseline agent:
 
-<video width="640" height="360" controls>
-  <source src="./assets/no-safety.mp4" type="video/mp4">
-  Your browser does not support the video tag.
-</video>
+https://github.com/Janst1000/Safe-RL-Duckietown/assets/26146580/545a1019-094c-4809-b533-6ff7231ce963
+
 
 And here is the safe agent with the safety layer:
 
-<video width="640" height="360" controls>
-  <source src="./assets/safety.mp4" type="video/mp4">
-  Your browser does not support the video tag.
-</video>
+
+
+https://github.com/Janst1000/Safe-RL-Duckietown/assets/26146580/cd5c84f4-4987-4425-a652-b5e3a4a01021
+
+
 
 There clearly is an improvement in safety but it still isn't perfect. The agent still leaves the lane once in the test but in all the other times it recovers by itself. For more information you can look at the thesis document.
 
