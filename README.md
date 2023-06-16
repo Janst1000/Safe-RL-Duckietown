@@ -102,14 +102,21 @@ To find some more detailed results you can look at the thesis document [here](./
 
 Here is the baseline agent:
 
-https://github.com/Janst1000/Safe-RL-Duckietown/assets/26146580/545a1019-094c-4809-b533-6ff7231ce963
+<div align="left">
+      <a href="https://youtu.be/FCxyHCZ5v8g">
+         <img src="https://img.youtube.com/vi/FCxyHCZ5v8g/0.jpg" style="width:50%;">
+      </a>
+</div>
 
 
 And here is the safe agent with the safety layer:
 
 
-
-https://github.com/Janst1000/Safe-RL-Duckietown/assets/26146580/cd5c84f4-4987-4425-a652-b5e3a4a01021
+<div align="left">
+      <a href="https://youtu.be/dVruHgGZlPQ">
+         <img src="https://img.youtube.com/vi/dVruHgGZlPQ/0.jpg" style="width:50%;">
+      </a>
+</div>
 
 
 
